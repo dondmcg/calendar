@@ -1,0 +1,945 @@
+<html>
+<head>
+    <script src="https://code.jquery.com/jquery-3.1.0.min.js" integrity="sha256-cCueBR6CsyA4/9szpPfrX3s49M9vUU5BgtiJj06wt/s=" crossorigin="anonymous"></script>
+    <script src="node_modules/moment/min/moment.min.js"></script>
+    <script type="text/javascript">
+        // Your Client ID can be retrieved from your project in the Google
+        // Developer Console, https://console.developers.google.com
+        var CLIENT_ID = '234341324242-6qjv4jtpoiv442jcgg5k62nk0urqadp0.apps.googleusercontent.com';//'234341324242-6qjv4jtpoiv442jcgg5k62nk0urqadp0.apps.googleusercontent.com';
+        var SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"];
+        var daysArr = ['sun', 'mon', 'tue', 'wed', 'thur', 'fri', 'sat'];
+        var monthsArr = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sept', 'oct', 'nov', 'dec'];
+        var calendarArr = [];
+        var TSTcalendar = {
+          eventCount: 0,
+          currentDate: '',
+          nextDate: '',
+          previousDate: '',
+          currentMonth: '',
+          nextMonth: '',
+          previousMonth: ''
+        };
+        /**
+         * Check if current user has authorized this application.
+         */
+        function checkAuth() {
+            gapi.auth.authorize(
+                    {
+                        'client_id': CLIENT_ID,
+                        'scope': SCOPES.join(' '),
+                        'immediate': true
+                    }, handleAuthResult);
+        }
+
+        /**
+         * Handle response from authorization server.
+         *
+         * @param {Object} authResult Authorization result.
+         */
+        function handleAuthResult(authResult) { //handleAuthResult
+            var authorizeDiv = document.getElementById('authorize-div');
+            if (authResult && !authResult.error) {
+                // Hide auth UI, then load client library.
+                authorizeDiv.style.display = 'none';
+                loadCalendarApi();
+            } else {
+                // Show auth UI, allowing the user to initiate authorization by
+                // clicking authorize button.
+                authorizeDiv.style.display = 'inline';
+            }
+        }
+
+        /**
+         * Initiate auth flow in response to user clicking authorize button.
+         *
+         * @param {Event} event Button click event.
+         */
+        function handleAuthClick(event) {
+            gapi.auth.authorize(
+                    {client_id: CLIENT_ID, scope: SCOPES, immediate: false},
+                    handleAuthResult);
+            return false;
+        }
+
+        /**
+         * Load Google Calendar client library. List upcoming events
+         * once client library is loaded.
+         */
+        function loadCalendarApi() {
+            gapi.client.load('calendar', 'v3', listEvents);
+        }
+
+        /**
+         * Print the summary and start datetime/date of the next ten events in
+         * the authorized user's calendar. If no events are found an
+         * appropriate message is printed.
+         */
+        function listEvents(date, updateList) {
+            // date = '2016-12-01T10:00:00.000Z';
+            // if no date passed in then create new date off current date
+            if(!date) date = (new Date()).toISOString();
+            // create the calendar Object for use with previous and next
+            // and with calendar clicking to update event list
+            var dateArr = date.split('-'),
+                nextYear = Number(dateArr[0]) + 1,
+                currYear = dateArr[0],
+                prevYear = dateArr[0] - 1,
+                currMonth = dateArr[1],
+                nextMonth = Number(dateArr[1]) + 1,
+                nextMonth = (nextMonth).toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}),
+                nextDate = (nextMonth > 12)? nextYear + '-01-' + dateArr[2] : currYear + '-' + nextMonth + '-' + dateArr[2],
+                prevMonth = Number(dateArr[1]) - 1;
+                prevMonth = (prevMonth).toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}),
+                prevDate = (prevMonth < 1)? prevYear + '-12-' + dateArr[2] : currYear + '-' + prevMonth + '-' + dateArr[2],
+                dateObj = {'prevDate': prevDate, 'date': date, 'nextDate': nextDate};
+
+            calendarArr = [];
+            calendarArr.push(dateObj);
+
+            var request = gapi.client.calendar.events.list({
+                'calendarId': 'primary',
+                'timeMin': date,
+                'showDeleted': false,
+                'singleEvents': true,
+                'maxResults': 10,
+                'orderBy': 'startTime'
+            });
+
+            request.execute(function (resp) {
+              console.log(resp);
+                var events = resp.items,
+                    addTitle = true;
+                if (events.length > 0) {
+                    for (i = 0; i < events.length; i++) {
+                        var event = events[i],
+                                when = event.start.dateTime,
+                                over = event.end.dateTime;
+                        if (!when) {
+                            var when = event.start.date,
+                                    over = event.end.date;
+                        }
+
+                        var node = document.createElement('div'),
+                            eventInfo = document.createElement('div'),
+                            eventTime = document.createElement('div'),
+                            eventTitle = document.createElement('div'),
+                            eventDate = document.createElement('div'),
+                            eventAction = document.createElement('div'),
+                            newtime = moment(when).format('h:mmA'),
+                            newover = moment(over).format('h:mmA'),
+                            newdate = moment(when).format('MMM Do YYYY'),
+                            listTitle = moment(when).format('MMMM');
+
+                        if(newtime === newover) {
+                            newtime = 'All Day';
+                        }
+
+                        if(addTitle) appendPre(listTitle, 'event_list', 'h2'), addTitle = false;
+
+                        eventTime.innerHTML = newtime;
+                        eventTitle.innerHTML = event.summary;
+                        eventDate.innerHTML = newdate;
+
+                        node.appendChild(eventTime);
+                        eventInfo.appendChild(eventTitle);
+                        eventInfo.appendChild(eventDate);
+                        node.appendChild(eventInfo);
+                        node.appendChild(eventAction);
+
+                        eventTime.className = 'event-time';
+                        eventInfo.className = 'event-info';
+                        eventTitle.className = 'event-title';
+                        eventDate.className = 'event-date';
+                        eventAction.className = 'event-action';
+                        node.className = 'calendar-item';
+
+                        appendPre(node);
+                    }
+                } else {
+                    appendPre('No events found.');
+                }
+
+            });
+            if(!updateList) getNextMonths(date);
+        }
+
+        /**
+         * Append an element to the body containing the given message
+         * as its text node.
+         *
+         * @param {string} message Text to be placed in pre element.
+         */
+        function appendPre(message, id, tag, addClass) {
+            if (id === undefined) {
+                id = "event_list";
+            }
+            var pre = document.getElementById(id);
+            var textContent = (typeof message === 'string')? document.createTextNode(message + '\n') : message;
+            if (tag) {
+                var newNode = document.createElement(tag);
+                if (addClass) newNode.className = addClass;
+                newNode.appendChild(textContent);
+                pre.appendChild(newNode);
+            } else {
+                pre.appendChild(textContent);
+            }
+        }
+
+        function getNextMonths(startdate, numMonths) {
+            // make API call to get a month (current if not specified)
+            // and the immediately following month
+            var number_Months = (numMonths)? numMonths: 2;
+            var strtDate = (startdate) ? moment(startdate).toDate() : new Date();
+                    var y = strtDate.getFullYear(),
+                    m = strtDate.getMonth(),
+                    strtDate = new Date(y, m, 1),
+                    d = daysArr[strtDate.getDay()],
+                    endDate = new Date(y, m + number_Months, 1),
+                    endFirstMonth = new Date(y, m + 1, 0),
+
+                    request = gapi.client.calendar.events.list({
+                        'calendarId': 'primary',
+                        'timeMin': strtDate.toISOString(),
+                        'timeMax': endDate.toISOString(),
+                        'showDeleted': false,
+                        'singleEvents': true,
+                        'orderBy': 'startTime'
+                    });
+                    TSTcalendar.endDate = endDate;
+            request.execute(function (resp) {
+                var events = resp.items,
+                    calDaysArr = getDays('curr_cal');
+                startCal(calDaysArr, d, endFirstMonth, events);
+            });
+
+        }
+
+        function startCal(calDaysArr, d, endFirstMonth, events, currNxtFlag) {
+            var insertDay;
+            for (var i in calDaysArr) {
+                if (calDaysArr[i].className.indexOf(d) > -1) {
+                    insertDay = calDaysArr[i];
+                    var daysArr = (newDaysArr) ? newDaysArr : calDaysArr;
+                    pollEvents(events, endFirstMonth, daysArr, currNxtFlag);
+                    break;
+                } else {
+                    var workingDaysArr = (newDaysArr)? newDaysArr : calDaysArr,
+                        newDaysArr = shift(workingDaysArr, d);
+                }
+            }
+        }
+
+        function shift(calDaysArr, firstDay) {
+            if(firstDay.indexOf('sun') > -1) return calDaysArr;
+            var newDaysArr = [];
+
+            for (var i = 1; i < calDaysArr.length; i++)
+                newDaysArr.push(calDaysArr[i]);
+            return newDaysArr;
+        }
+
+        function getDays(id) {
+            var days = document.querySelectorAll('#' + id + ' .day');
+            return days;
+        }
+
+        function removeItems(arr, index) {
+            return arr.splice(0, index);
+        }
+
+        function checkDayHasEvents(newWhen, dayIncrementor) {
+    			var chxday = newWhen.toString().split(" ");
+    			var eventday = chxday[2];
+    			var calday = (dayIncrementor < 10)? ('0' + dayIncrementor) : dayIncrementor;
+    			var dayHasEvent = (eventday == calday)? true : false;
+    			console.log('eventday: ' + eventday + ' calday: ' + calday);
+    			return dayHasEvent;
+    		}
+
+        function appendDayBullet(target, dayNumber, hasEvent) {
+            /////////////////////
+            // append day number
+            var dayCountClasses = (hasEvent)? 'day-number has-events': 'day-number';
+            var dayCountNode = document.createElement('div');
+            dayCountNode.className = dayCountClasses;
+            var dayCountText = document.createTextNode(dayNumber);
+            dayCountNode.appendChild(dayCountText);
+            target.appendChild(dayCountNode);
+            //////////////////
+            // append bullet
+            var bulletContent = document.createTextNode(''),
+                    bulletNode = document.createElement('div');
+            bulletNode.className = 'day-bullet';
+            bulletNode.appendChild(bulletContent);
+            target.appendChild(bulletNode);
+        }
+
+        function pollEvents(events, endFirstMonth, calDaysArr, currNxtFlag) {
+            if(currNxtFlag) {
+                // starting a new calendar so zero out the event index
+                TSTcalendar.eventCount = 0;
+            }
+            var firstEvent = events[0],
+              caltitle = (firstEvent.start.dateTime)? firstEvent.start.dateTime : firstEvent.start.date;
+              caltitle = moment(caltitle).format('MMM YYYY'),
+              calBoxArr = caltitle.split(' '),
+              newMonth = calBoxArr[0].toLowerCase(),
+              monthNumber = monthsArr.indexOf(newMonth) + 1,
+              year = moment(caltitle).format('YYYY'),
+              daysInMonth = new Date(year, monthNumber, 0).getDate();
+
+              TSTcalendar.Month = monthNumber;
+
+            var currORnxt = (currNxtFlag)? 'nxt' : 'curr';
+            // set up the dayCount for arrays specifically the queried cal collection
+            // append month and year to title of calendar "Dec 2016"
+            appendPre(caltitle, currORnxt + 'caltitle', 'h3');
+            // set up the displayDayCount to append the day to the calendar box
+            var displayDayCount = (dayCount + 1),
+                dayEventsNodeArr = [];
+            var eventIncrementor = 0;
+            for (dayIncrementor = 1; dayIncrementor <= (daysInMonth + 1); dayIncrementor++) {
+              console.log('DAY INCREMENTOR: ' + dayIncrementor + ' EVENT INCREMENTOR: ' + eventIncrementor);
+              console.log('TSTcalendar value: ' + TSTcalendar.eventCount);
+              console.log(events);
+              var event = events[eventIncrementor],
+                    dayCount = dayIncrementor - 1,
+                    target = calDaysArr[dayCount];
+
+                    //////////////////////////////
+                    // Check if the events are in next month
+                    console.log('days in month ' + daysInMonth);
+                    console.log('day incrementor ' + dayIncrementor)
+
+              if(dayIncrementor === (daysInMonth + 1) && !currNxtFlag) {
+
+                var newWhen = parseWhen(event),
+                nxtEvent = events[ eventIncrementor + 1 ],
+                nxtWhen = (nxtEvent)? parseWhen(nxtEvent) : false,
+                dayNumber = document.createTextNode(displayDayCount),
+                textContent = document.createTextNode(event.summary + ' (' + when + ')'),
+                d = daysArr[newWhen.getDay()],
+                nxtDay = (nxtEvent)? daysArr[nxtWhen.getDay()] : false;
+
+                  var nextWhen = parseWhen(event),
+                          nextCalDaysArr = getDays('next_cal'),
+                          next_d = daysArr[nextWhen.getDay()],
+                          nextEvents = events.slice(eventIncrementor);
+                          console.log( 'NEXT EVENTS', nextEvents );
+                  startCal(nextCalDaysArr, next_d, false, nextEvents, true);
+                  return;
+              }
+
+              if(event){
+                var when = (event)? event.start.dateTime: false;
+					      if (!when) {
+                  when = event.start.date;
+					      }
+					      var dateStr = when.replace(/\D/g, " "),
+						          dateArr = dateStr.split(" ");
+
+      					// modify month between 1 based ISO 8601 and zero based Date
+      					dateArr[1]--;
+
+                // if event date matches day AND next event date does not match day
+                if (d !== nxtDay) {
+                    // then do this
+                    // add the day number and bullet
+                    // add class of 'hasevents'
+                    // TBD append events and events hover
+                    // increment event
+                    // increment day (fall through)
+                    eventIncrementor++;
+                    TSTcalendar.eventCount = eventIncrementor;
+                    console.log('one event day - day number ' + dayIncrementor);
+                    console.log('add day number and bullet and has-event class');
+                    console.log(event);
+                    console.log(target);
+                    appendDayBullet(target, dayIncrementor, true);
+                // if eventdate matches day AND nexteventdate matches day
+                } else if (d === nxtDay) {
+                    // then do this
+                    // increment event
+                    eventIncrementor = TSTcalendar.eventCount;
+                    /*console.log('incrementor ' + eventIncrementor);
+                    console.log(events);*/
+                    console.log('found multi event so then enter loop');
+                    console.log('record event');
+                    console.log(event);
+                    console.log('this event ' + eventIncrementor + ' this day: ' + dayIncrementor);
+                    // don't increment day (stay in internal loop)
+                    // loop logic:
+                    // event 5 out of 10 - multiEventsArr would be 5
+
+                    var currMultiEvent = events[eventIncrementor],
+                      currMultiWhen = parseWhen(event),
+                      nxtMultiEvent = events[ eventIncrementor + 1 ],
+                      nxtMultiWhen = (nxtMultiEvent)? parseWhen(nxtMultiEvent) : false,
+                      numberOfEvents = 1;
+
+                    //console.log('check while statement compare');
+                    //console.log(currMultiWhen);
+                    //console.log(events);
+                    //console.log(eventIncrementor + 1);
+                    //console.log(events[ eventIncrementor + 1 ]);
+                    //console.log(nxtMultiWhen);
+
+                    while( currMultiWhen.toString() === nxtMultiWhen.toString() ) {
+                    //for (i = 0; i < events.length; i++) {
+                      eventIncrementor++;
+                        console.log('eventIncrementor at beginning of loop ' + eventIncrementor);
+                        // get incremented event id
+                        // get incremented event date
+                        // get next event id
+                        // get next event date
+                        currMultiEvent = events[ eventIncrementor ],
+                        currMultiWhen = parseWhen(event),
+                        nxtMultiEvent = events[ eventIncrementor + 1 ],
+                        nxtMultiWhen = (nxtMultiEvent)? parseWhen(nxtMultiEvent) : false;
+                        //TSTcalendar.eventNumber + 1;
+                        event = currMultiEvent;
+
+                        console.log('record event');
+                        console.log('current event ' + (eventIncrementor));
+                        TSTcalendar.eventCount = eventIncrementor;
+                        console.log('currMultiEvent');
+                        console.log(currMultiEvent);
+                        // compare dates
+                        //if(currMultiWhen.toString() !== nxtMultiWhen.toString()){
+                            //console.log('checked next event and does not match');
+                            //break;
+                        //}
+                        numberOfEvents ++;
+                        //console.log('check event incrementor before increment');
+                        //console.log(eventIncrementor);
+                        //eventIncrementor++;
+                        //TSTcalendar.eventNumber = eventIncrementor;
+                        // if same then stay in loop
+                        // if different
+                        // add the day number and bullet
+                        // add class of 'hasevents'
+                        // TBD append events and events hover
+                        // increment event
+                    }
+                    eventIncrementor++
+                    TSTcalendar.eventCount = eventIncrementor;
+                    console.log('number of events ' + numberOfEvents);
+                    console.log('event incrementor outside multi event loop ' + eventIncrementor);
+                    // increment day (fall through)
+                    console.log('add day number and bullet and has-event class');
+                    appendDayBullet(target, dayIncrementor, true);
+                    console.log(target);
+                  }
+
+              } else {
+                if(dayIncrementor === (daysInMonth + 1)){
+                  return;
+                }
+                console.log('no events found so just');
+                console.log('add day number and bullet');
+                appendDayBullet(target, dayIncrementor, false);
+                // add the day number and bullet
+                // increment day (fall through)
+              }
+					/*//console.log('checkdays');
+					//console.log(checkDayHasEvents(newWhen, dayIncrementor));
+					if(checkDayHasEvents(newWhen, dayIncrementor)) {
+						// Check if the event is in the next month yet
+						// run through the processes to set up the next calendar
+						if(endFirstMonth && (newWhen.getTime() > endFirstMonth.getTime())) {
+
+							var nextWhen = parseWhen(event),
+							nextCalDaysArr = getDays('next_cal'),
+							next_d = daysArr[nextWhen.getDay()],
+							nextEvents = events.slice(eventIncrementor),
+							nextCalDaysArr = shift(nextCalDaysArr, next_d);
+							startCal(nextCalDaysArr, next_d, false, nextEvents, true)
+							return;
+						}
+
+						// if the current date is the same as the next
+						// then do not increment dayCount thus not incrementing
+						// calDaysArr
+						var nxtDay = (nxtEvent)? daysArr[nxtWhen.getDay()] : false;
+						// if the current event date is not the same as the next event date
+
+						if(d !== nxtDay) {
+							dayCount++;
+							displayDayCount++;
+							// Check that the event date matches the calendar box
+							// for instance if no events on this day then go to the next day
+							// if
+							var eventDayArr = newWhen.toString().split(' '),
+							eventDay = eventDayArr[2],
+							chxDay = (dayCount.toString().length < 2)? '0' + dayCount : dayCount.toString();
+
+							if(eventDay === chxDay) {
+								// append events
+								var dayEventsNode = document.createElement('div');
+								dayEventsNode.className = 'day-events';
+								dayEventsNodeArr.push(textContent);
+								var dayEventsNodeUL = document.createElement('ul');
+								for( i=0; i < dayEventsNodeArr.length; i++ ) {
+									var dayEventsNodeLI = document.createElement('li');
+									dayEventsNodeLI.appendChild(dayEventsNodeArr[i]);
+									dayEventsNodeUL.appendChild(dayEventsNodeLI);
+								}
+								dayEventsNode.appendChild(dayEventsNodeUL);
+								target.appendChild(dayEventsNode);
+								////////////////////
+								// append event count
+								var eventCountNode = document.createElement('div');
+								eventCountNode.className = 'event-count';
+								if(dayEventsNodeArr.length > 1) {
+									var eventCount = document.createTextNode(dayEventsNodeArr.length + ' events');
+									eventCountNode.appendChild(eventCount);
+								}
+								target.appendChild(eventCountNode);
+								dayEventsNodeArr = [];
+							}
+							/////////////////////
+							// append day number
+							var dayCountClasses = (eventDay === chxDay)? 'day-number has-events': 'day-number';
+							var dayCountNode = document.createElement('div');
+							dayCountNode.className = dayCountClasses;
+							dayCountNode.appendChild(dayNumber);
+							target.appendChild(dayCountNode);
+							//////////////////
+							// append bullet
+							var bulletContent = document.createTextNode(''),
+									bulletNode = document.createElement('div');
+							bulletNode.className = 'day-bullet';
+							bulletNode.appendChild(bulletContent);
+							target.appendChild(bulletNode);
+						// if the current event date is the same as the next event date
+						} else {
+							dayEventsNodeArr.push(textContent);
+						}
+					}
+            	//}
+            	if(checkDayHasEvents(newWhen, dayIncrementor)) {
+            		eventIncrementor++;
+            	}*/
+            }
+        }
+
+        function parseWhen(event) {
+            var when = event.start.dateTime;
+            if (!when) {
+                when = event.start.date;
+            }
+            var dateStr = when.replace(/\D/g, " ");
+            var dateArr = dateStr.split(" ");
+            // modify month between 1 based ISO 8601 and zero based Date
+            dateArr[1]--;
+            var newWhen = new Date(Date.UTC(dateArr[0], dateArr[1], dateArr[2]));
+            newWhen = moment(newWhen).add(1, 'days');
+            newWhen = moment(newWhen).startOf('day')._d;
+            return newWhen;
+        }
+    </script>
+    <script src="https://apis.google.com/js/client.js?onload=checkAuth"></script>
+    <style>
+        body {
+            font-family: arial, helvetica, san-serif;
+        }
+
+        .nxt-cal-title h3, .curr-cal-title h3  {
+            text-align: left;
+            margin: 30px 5px 10px 20px;
+            font-weight: normal;
+        }
+
+        .nxt-cal-title h3, .curr-cal-title h3, .sun, .sat, .prev-btn, .nxt-btn {
+            color:#a9a9a9;
+        }
+
+        .weekdays {
+            height: 16px;
+            display: flex;
+        }
+
+        .weekdays div {
+            flex-grow: 1;
+            flex-shrink: 1;
+            flex-basis: 0;
+            align-items: center;
+            font-size: .7em;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .cal-row {
+            margin: 0 auto 80px auto;
+            text-align:center;
+            max-height: 560px;
+            min-width: 710px;
+            position: relative;
+        }
+
+        .nxt-cal-title, .curr-cal-title {
+         min-height: 22px;
+         margin: 30px 5px 10px 20px
+        }
+
+        .nxt-cal-title h3, .curr-cal-title h3 {
+        	margin: 0;
+        }
+
+        .prev-btn, .nxt-btn {
+            position: absolute;
+            top: 260px;
+            font-size: 2em;
+            cursor: pointer;
+            cursor: hand;
+        }
+
+        .prev-btn {
+        	left: 20px;
+        }
+
+        .nxt-btn {
+        	right: 20px;
+        }
+
+        .week {
+            display: flex;
+            height: 80px;
+        }
+
+        .day {
+            flex-grow: 1;
+            flex-shrink: 1;
+            flex-basis: 0;
+            color: #000;
+            padding: 5px;
+            font-size: .6em;
+            position: relative;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .day:hover .event-count {
+            display: inline-block;
+        }
+
+        .event-count {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            display: none;
+            color: #ccc;
+        }
+
+        .day-events {
+            display: none;
+        }
+
+        .day-number {
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            background-color: transparent;
+            color: #888888;
+            padding: .4em;
+            text-align: center;
+            font-size: 1.5em;
+            margin: 20px auto;
+        }
+
+        .day-number.has-events {
+            background-color: #888888;
+            color: #ffffff;
+        }
+
+        .day-bullet {
+            font-size: 1.5em;
+            text-align: center;
+            position: relative;
+            top: -12px;
+            background-color: #ccc;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            margin: 0 auto;
+        }
+
+        .curr-cal.active, .next-cal.active {
+            background-color: #f9f9f9;
+        }
+
+        .curr-cal .day, .next-cal .day {
+            border-top: 1px solid #ccc;
+        }
+
+        .month {
+            max-width: 560px;
+            margin: 20px 0 20px 0;
+            width: 40%;
+            display: inline-block;
+            border: 1px solid #ccc;
+            vertical-align: top
+        }
+
+        .event-list h2, .events h2 {
+            padding-left: 10px;
+        }
+
+        .calendar-item {
+            box-shadow: -1px -1px #ccc,
+            inset -1px -1px 0 0 #ccc;
+            padding: 2px;
+            margin: 10px;
+            display: flex;
+            flex-flow: row;
+            align-items: center;
+        }
+
+        .event-list, .events {
+            width: 82%;
+            margin: 0 auto;
+        }
+
+        .event-time {
+            flex: 1;
+            border-right: 2px solid blue;
+            text-align: right;
+
+        }
+
+        .event-action, .event-time {
+            padding: 20px;
+        }
+
+        .event-info {
+           padding: 12px;
+        }
+
+        .event-title {
+            font-weight: bold;
+        }
+
+        .event-action {
+            flex: 3;
+
+        }
+
+        .event-info {
+            flex: 4;
+        }
+    </style>
+</head>
+<body>
+<h1>Calendar Test</h1>
+<!--<iframe src="https://calendar.google.com/calendar/embed?src=dondmcg%40gmail.com&ctz=America/New_York" style="border: 0" width="800" height="600" frameborder="0" scrolling="no"></iframe>-->
+<div id="authorize-div" style="display: none">
+    <span>Authorize access to Google Calendar API</span>
+    <!--Button for the user to click to initiate auth sequence -->
+    <button id="authorize-button" onclick="handleAuthClick(event)">
+        Authorize
+    </button>
+</div>
+<div class="events" id="events"></div>
+<div class="cal-row">
+        <div id="prev_btn" class="prev-btn"><</div>
+        <div id="curr_cal" class="curr-cal month active">
+            <div id= "currcaltitle" class="curr-cal-title"></div>
+            <div class="weekdays">
+                <div class="sun">S</div>
+                <div class="mon">M</div>
+                <div class="tue">T</div>
+                <div class="wed">W</div>
+                <div class="thur">T</div>
+                <div class="fri">F</div>
+                <div class="sat">S</div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+        </div>
+        <div id="next_cal" class="next-cal month">
+            <div id= "nxtcaltitle" class="nxt-cal nxt-cal-title"></div>
+            <div class="weekdays">
+                <div class="sun">S</div>
+                <div class="mon">M</div>
+                <div class="tue">T</div>
+                <div class="wed">W</div>
+                <div class="thur">T</div>
+                <div class="fri">F</div>
+                <div class="sat">S</div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+            <div class="week">
+                <div class="day sun"></div>
+                <div class="day mon"></div>
+                <div class="day tue"></div>
+                <div class="day wed"></div>
+                <div class="day thur"></div>
+                <div class="day fri"></div>
+                <div class="day sat"></div>
+            </div>
+
+    </div>
+    <div id="nxt_btn" class="nxt-btn">></div>
+</div>
+
+<div class="event-list" id="event_list">
+
+</div>
+<script>
+appendPre('Events', 'events', 'h2');
+/**
+* Add event listeners
+*
+* **/
+(function () {
+    var previousTwoMonths = document.getElementById("prev_btn"),
+            nextTwoMonths = document.getElementById("nxt_btn"),
+            currCalList = document.getElementById("curr_cal"),
+            nxtCalList = document.getElementById("next_cal"),
+            eventList = document.getElementById('event_list');
+            document.getElementById('currcaltitle')
+
+    currCalList.onclick = function () {
+        if((this.className).indexOf('active') === -1) {
+            nxtCalList.className = 'next-cal month';
+            this.className = 'curr-cal month active';
+            eventList.innerHTML = '';
+            listEvents(calendarArr[0].prevDate, true);
+        }
+    };
+    nxtCalList.onclick = function (e) {
+        currCalList.className = 'curr-cal month';
+        this.className = 'next-cal month active';
+        eventList.innerHTML = '';
+        listEvents(calendarArr[0].nextDate, true);
+    };
+    previousTwoMonths.onclick = function () {
+        eventList.innerHTML = '';
+        var nextCalDaysArr = getDays('next_cal');
+        var currCalDaysArr = getDays('curr_cal');
+        for( i=0; i < nextCalDaysArr.length; i++) {
+            nextCalDaysArr[i].innerHTML = '';
+        };
+        for( i=0; i < currCalDaysArr.length; i++) {
+            currCalDaysArr[i].innerHTML = '';
+        };
+        document.getElementById('currcaltitle').innerHTML = '';
+        document.getElementById('nxtcaltitle').innerHTML = '';
+        listEvents(calendarArr[0].prevDate, false);
+    };
+    nextTwoMonths.onclick = function () {
+        eventList.innerHTML = '';
+        var nextCalDaysArr = getDays('next_cal');
+        var currCalDaysArr = getDays('curr_cal');
+        for( i=0; i < nextCalDaysArr.length; i++) {
+            nextCalDaysArr[i].innerHTML = '';
+        };
+        for( i=0; i < currCalDaysArr.length; i++) {
+            currCalDaysArr[i].innerHTML = '';
+        };
+        document.getElementById('currcaltitle').innerHTML = '';
+        document.getElementById('nxtcaltitle').innerHTML = '';
+        listEvents(calendarArr[0].nextDate, false);
+    };
+}());
+</script>
+</body>
+</html>
